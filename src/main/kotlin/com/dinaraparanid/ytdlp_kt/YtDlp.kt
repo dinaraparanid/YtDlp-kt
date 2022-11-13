@@ -1,14 +1,15 @@
 package com.dinaraparanid.ytdlp_kt
 
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.IOException
 
-object YtDlp {
-    private val updaterScope = CoroutineScope(Dispatchers.IO)
-    private val fetcherScope = CoroutineScope(Dispatchers.IO)
+object YtDlp : CoroutineScope by CoroutineScope(Dispatchers.IO) {
     private val json = Json { ignoreUnknownKeys = true }
 
     @Volatile
@@ -16,10 +17,7 @@ object YtDlp {
 
     private fun buildCommand(command: String) = "yt-dlp $command"
 
-    @JvmStatic
-    @JvmName("executeWithResponse")
-    @Throws(YtDlpException::class)
-    private fun executeWithResponse(request: YtDlpRequest): YtDlpResponse {
+    private fun executeWithResponseOrThrow(request: YtDlpRequest): YtDlpResponse {
         val directory = request.directory
         val options = request.options
         val outBuffer = StringBuffer() //stdout
@@ -30,9 +28,7 @@ object YtDlp {
         val commandArr = java.lang.String(buildCommand(request.buildOptions())).split(" ")
 
         val processBuilder = ProcessBuilder(*commandArr).also { builder ->
-            directory
-                ?.let(::File)
-                ?.let(builder::directory)
+            directory?.let(::File)?.let(builder::directory)
         }
 
         val process = try {
@@ -63,25 +59,66 @@ object YtDlp {
         return YtDlpResponse(command, options, directory, exitCode, elapsedTime, out, err)
     }
 
+    /**
+     * Executes provided request or returns
+     * [YtDlpRequestStatus.Error] if something went wrong.
+     * Blocks current thread until the end of execution
+     * @param request request to execute
+     * @return [YtDlpRequestStatus.Success] with [YtDlpResponse]
+     * or [YtDlpRequestStatus.Error] if something went wrong
+     */
+
     @JvmStatic
     @JvmName("execute")
     fun execute(request: YtDlpRequest) =
         kotlin.runCatching {
-            YtDlpRequestStatus.Success(executeWithResponse(request))
+            YtDlpRequestStatus.Success(executeWithResponseOrThrow(request))
         }.getOrElse {  exception ->
             ConversionException(exception).error
         }
 
+    /**
+     * Executes provided request asynchronously or returns
+     * [YtDlpRequestStatus.Error] if something went wrong
+     * @param request request to execute
+     * @return [YtDlpRequestStatus.Success] with [YtDlpResponse]
+     * or [YtDlpRequestStatus.Error] if something went wrong
+     */
+
     @JvmStatic
-    @JvmName("updateAsync")
-    fun updateAsync() = updaterScope.launch(Dispatchers.IO) {
+    @JvmName("executeAsync")
+    fun executeAsync(request: YtDlpRequest) = async { execute(request) }
+
+    /**
+     * Updates yt-dlp on the device.
+     * Blocks current thread until the end of execution
+     */
+
+    @JvmStatic
+    @JvmName("update")
+    fun update() {
         if (isYoutubeDLUpdateTaskStarted)
-            return@launch
+            return
 
         isYoutubeDLUpdateTaskStarted = true
-        Runtime.getRuntime().exec("yt-dlp -U")
+        Runtime.getRuntime().exec("yt-dlp -U").waitFor()
         isYoutubeDLUpdateTaskStarted = false
     }
+
+    /** Updates yt-dlp on the device asynchronously */
+
+    @JvmStatic
+    @JvmName("updateAsync")
+    fun updateAsync() = launch { update() }
+
+    /**
+     * Gets [VideoInfo] by url or returns
+     * [YtDlpRequestStatus.Error] if something went wrong.
+     * Blocks current thread until the end of execution
+     * @param url url of searchable video
+     * @return [YtDlpRequestStatus.Success] with [VideoInfo]
+     * or [YtDlpRequestStatus.Error] if something went wrong
+     */
 
     @JvmStatic
     @JvmName("getVideoData")
@@ -89,10 +126,10 @@ object YtDlp {
         kotlin.runCatching {
             YtDlpRequest(url)
                 .apply {
-                    setOption("dump-json")
-                    setOption("no-playlist")
+                    setOption("--dump-json")
+                    setOption("--no-playlist")
                 }
-                .let(YtDlp::executeWithResponse)
+                .let(YtDlp::executeWithResponseOrThrow)
                 .let(YtDlpResponse::out)
                 .let<String, VideoInfo>(json::decodeFromString)
                 .withFileNameWithoutExt
@@ -101,8 +138,17 @@ object YtDlp {
             ConversionException(exception).error
         }
 
-    @Throws(YtDlpException::class)
-    fun getVideoDataAsync(url: String) = fetcherScope.async(Dispatchers.IO) {
+    /**
+     * Gets [VideoInfo] by url asynchronously or returns
+     * [YtDlpRequestStatus.Error] if something went wrong.
+     * @param url url of searchable video
+     * @return [YtDlpRequestStatus.Success] with [VideoInfo]
+     * or [YtDlpRequestStatus.Error] if something went wrong
+     */
+
+    @JvmStatic
+    @JvmName("getVideoDataAsync")
+    fun getVideoDataAsync(url: String) = async {
         getVideoData(url)
     }
 }

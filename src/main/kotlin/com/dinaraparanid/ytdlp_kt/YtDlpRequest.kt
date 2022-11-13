@@ -4,15 +4,18 @@ import java.util.HashMap
 
 class YtDlpRequest(
     private var url: String? = null,
+    /** Directory in which request will be executed */
     @JvmField var directory: String? = null
 ) {
     internal val options: MutableMap<String, String?> = HashMap()
-    fun setOption(key: String, value: String? = null) = options.set(key, value)
 
     /**
-     * Transform options to a string that the executable will execute
-     * @return Command string
+     *  Adds yt-dlp option with optional [value].
+     *  You can find all existing options [here](https://github.com/yt-dlp/yt-dlp#usage-and-options)
+     *  @param key command to execute
+     *  @param value optional argument
      */
+    fun setOption(key: String, value: String? = null) = options.set(key, value)
 
     internal fun buildOptions() =
         StringBuilder()
