@@ -11,7 +11,7 @@ data class VideoInfo(
     /** Duration is seconds */
     @JvmField val duration: Long,
     /** Text under the video if there is any */
-    @JvmField val description: String?,
+    @JvmField val description: String? = null,
     /** File name of uploaded video */
     @SerialName("_filename") @JvmField val fileName: String,
     /** Url of video cover (image) */
