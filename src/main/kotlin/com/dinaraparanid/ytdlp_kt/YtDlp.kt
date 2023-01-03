@@ -15,17 +15,18 @@ object YtDlp : CoroutineScope by CoroutineScope(Dispatchers.IO) {
     @Volatile
     private var isYoutubeDLUpdateTaskStarted = false
 
-    private fun buildCommand(command: String) = "yt-dlp $command"
+    private fun buildCommand(command: String, isPythonExecutable: Boolean) =
+        "${if (isPythonExecutable) "python3" else ""}yt-dlp $command"
 
-    private fun executeWithResponseOrThrow(request: YtDlpRequest): YtDlpResponse {
+    private fun executeWithResponseOrThrow(request: YtDlpRequest, isPythonExecutable: Boolean): YtDlpResponse {
         val directory = request.directory
         val options = request.options
         val outBuffer = StringBuffer() //stdout
         val errBuffer = StringBuffer() //stderr
 
         val startTime = System.nanoTime()
-        val command = buildCommand(request.buildOptions())
-        val commandArr = java.lang.String(buildCommand(request.buildOptions())).split(" ")
+        val command = buildCommand(request.buildOptions(), isPythonExecutable)
+        val commandArr = java.lang.String(buildCommand(request.buildOptions(), isPythonExecutable)).split(" ")
 
         val processBuilder = ProcessBuilder(*commandArr).also { builder ->
             directory?.let(::File)?.let(builder::directory)
@@ -70,9 +71,9 @@ object YtDlp : CoroutineScope by CoroutineScope(Dispatchers.IO) {
 
     @JvmStatic
     @JvmName("execute")
-    fun execute(request: YtDlpRequest) =
+    fun execute(request: YtDlpRequest, isPythonExecutable: Boolean) =
         kotlin.runCatching {
-            YtDlpRequestStatus.Success(executeWithResponseOrThrow(request))
+            YtDlpRequestStatus.Success(executeWithResponseOrThrow(request, isPythonExecutable))
         }.getOrElse {  exception ->
             ConversionException(exception).error
         }
@@ -87,7 +88,9 @@ object YtDlp : CoroutineScope by CoroutineScope(Dispatchers.IO) {
 
     @JvmStatic
     @JvmName("executeAsync")
-    fun executeAsync(request: YtDlpRequest) = async { execute(request) }
+    fun executeAsync(request: YtDlpRequest, isPythonExecutable: Boolean) = async {
+        execute(request, isPythonExecutable)
+    }
 
     /**
      * Updates yt-dlp on the device.
@@ -96,12 +99,12 @@ object YtDlp : CoroutineScope by CoroutineScope(Dispatchers.IO) {
 
     @JvmStatic
     @JvmName("update")
-    fun update() {
+    fun update(isPythonExecutable: Boolean) {
         if (isYoutubeDLUpdateTaskStarted)
             return
 
         isYoutubeDLUpdateTaskStarted = true
-        Runtime.getRuntime().exec("yt-dlp -U").waitFor()
+        Runtime.getRuntime().exec(buildCommand("-U", isPythonExecutable)).waitFor()
         isYoutubeDLUpdateTaskStarted = false
     }
 
@@ -109,7 +112,7 @@ object YtDlp : CoroutineScope by CoroutineScope(Dispatchers.IO) {
 
     @JvmStatic
     @JvmName("updateAsync")
-    fun updateAsync() = launch { update() }
+    fun updateAsync(isPythonExecutable: Boolean) = launch { update(isPythonExecutable) }
 
     /**
      * Gets [VideoInfo] by url or returns
@@ -122,14 +125,14 @@ object YtDlp : CoroutineScope by CoroutineScope(Dispatchers.IO) {
 
     @JvmStatic
     @JvmName("getVideoData")
-    fun getVideoData(url: String) =
+    fun getVideoData(url: String, isPythonExecutable: Boolean) =
         kotlin.runCatching {
             YtDlpRequest(url)
                 .apply {
                     setOption("--dump-json")
                     setOption("--no-playlist")
                 }
-                .let(YtDlp::executeWithResponseOrThrow)
+                .let { executeWithResponseOrThrow(it, isPythonExecutable) }
                 .let(YtDlpResponse::out)
                 .let<String, VideoInfo>(json::decodeFromString)
                 .withFileNameWithoutExt
@@ -148,7 +151,7 @@ object YtDlp : CoroutineScope by CoroutineScope(Dispatchers.IO) {
 
     @JvmStatic
     @JvmName("getVideoDataAsync")
-    fun getVideoDataAsync(url: String) = async {
-        getVideoData(url)
+    fun getVideoDataAsync(url: String, isPythonExecutable: Boolean) = async {
+        getVideoData(url, isPythonExecutable)
     }
 }
