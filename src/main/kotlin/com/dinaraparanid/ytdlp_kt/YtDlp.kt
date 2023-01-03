@@ -16,7 +16,7 @@ object YtDlp : CoroutineScope by CoroutineScope(Dispatchers.IO) {
     private var isYoutubeDLUpdateTaskStarted = false
 
     private fun buildCommand(command: String, isPythonExecutable: Boolean) =
-        "${if (isPythonExecutable) "python3" else ""}yt-dlp $command"
+        "${if (isPythonExecutable) "python3 " else ""}yt-dlp $command"
 
     private fun executeWithResponseOrThrow(request: YtDlpRequest, isPythonExecutable: Boolean): YtDlpResponse {
         val directory = request.directory
